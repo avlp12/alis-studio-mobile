@@ -1,0 +1,63 @@
+name: AlisStudioMobile
+
+options:
+  bundleIdPrefix: com.gesicht
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  mlx-swift:
+    url: https://github.com/ml-explore/mlx-swift
+    exactVersion: 0.31.4
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
+
+targets:
+  StableDiffusion:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/StableDiffusion
+    dependencies:
+      - package: mlx-swift
+        product: MLX
+      - package: mlx-swift
+        product: MLXNN
+      - package: mlx-swift
+        product: MLXRandom
+      - package: swift-transformers
+        product: Hub
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gesicht.alisstudiomobile.StableDiffusion
+        SWIFT_VERSION: "5.10"
+        GENERATE_INFOPLIST_FILE: YES
+
+  AlisStudioMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/AlisStudioMobile
+    dependencies:
+      - target: StableDiffusion
+      - package: mlx-swift
+        product: MLX
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gesicht.alisstudiomobile
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: Sources/AlisStudioMobile/AlisStudioMobile.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: Alis Studio Mobile
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleDefault
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIFileSharingEnabled: YES
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
