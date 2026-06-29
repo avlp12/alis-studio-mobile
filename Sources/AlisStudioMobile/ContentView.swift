@@ -93,13 +93,21 @@ struct ContentView: View {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.0"
     }
 
+    private var deviceRAMGiB: Double { Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824 }
+    // Requires an 8 GB-class iPhone. 8 GB devices report ~7.8–8.0 GB; 6 GB report ~5.9 GB.
+    private var deviceSupported: Bool {
+        ProcessInfo.processInfo.physicalMemory >= 7 * 1024 * 1024 * 1024
+    }
+
     var body: some View {
         ZStack {
             AlisColor.bg(scheme).ignoresSafeArea()
             VStack(spacing: 0) {
                 topBar
                 Rectangle().fill(AlisColor.border(scheme)).frame(height: 0.5)
-                if showGallery {
+                if !deviceSupported {
+                    unsupportedScreen
+                } else if showGallery {
                     galleryScreen
                 } else {
                     generateScreen
@@ -113,6 +121,25 @@ struct ContentView: View {
                 pickingModel = false
             }
         }
+    }
+
+    private var unsupportedScreen: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 40)).foregroundStyle(AlisColor.clay(scheme))
+            Text("This device isn't supported")
+                .font(.system(size: 17, weight: .medium)).foregroundStyle(AlisColor.text(scheme))
+            Text(
+                "Alis Studio Mobile runs a multi-gigabyte diffusion model entirely on-device and "
+                    + "needs an iPhone with 8 GB of RAM or more (iPhone 15 Pro, 16, 16 Pro, or newer).\n\n"
+                    + "This device reports \(String(format: "%.1f", deviceRAMGiB)) GB."
+            )
+            .font(.system(size: 13)).foregroundStyle(AlisColor.text2(scheme))
+            .multilineTextAlignment(.center).padding(.horizontal, 32)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var topBar: some View {
@@ -129,19 +156,21 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             Spacer()
-            Button {
-                showGallery.toggle()
-                if showGallery { gallery = AlisGallery.list() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: showGallery ? "sparkles" : "square.grid.2x2")
-                    Text(showGallery ? "Generate" : "Gallery").font(.system(size: 13))
+            if deviceSupported {
+                Button {
+                    showGallery.toggle()
+                    if showGallery { gallery = AlisGallery.list() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: showGallery ? "sparkles" : "square.grid.2x2")
+                        Text(showGallery ? "Generate" : "Gallery").font(.system(size: 13))
+                    }
+                    .foregroundStyle(AlisColor.text(scheme))
+                    .padding(.horizontal, 11).frame(height: 30)
+                    .overlay(Capsule().stroke(AlisColor.border(scheme), lineWidth: 0.5))
                 }
-                .foregroundStyle(AlisColor.text(scheme))
-                .padding(.horizontal, 11).frame(height: 30)
-                .overlay(Capsule().stroke(AlisColor.border(scheme), lineWidth: 0.5))
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(AlisColor.surface(scheme))

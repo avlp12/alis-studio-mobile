@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.1
+
+- Block unsupported hardware: devices with less than 8 GB of RAM now show an
+  "unsupported device" screen instead of generating (the model would otherwise
+  jetsam-kill the app). Enforced at runtime via `ProcessInfo.physicalMemory`.
+- README: add real on-device screenshots (generate + gallery) and a thorough
+  minimum-requirements section (RAM, iOS, storage, network, real-device-only).
+- First-run "keep the screen on" hint in the download UI.
+
 ## v0.1.0 — initial separate release
 
 First standalone release of Alis Studio Mobile, split out of the throwaway
