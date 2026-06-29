@@ -232,13 +232,7 @@ open class StableDiffusion {
         // SDXL's VAE NaNs in fp16, but SDXL takes the fp16-fix repo path in loadAutoEncoder
         // (which forces fp16 on the retuned weights), so this dtype only applies to SD-Turbo's
         // stock VAE. Overridable via SPIKE_VAE_DTYPE for measurement.
-        let vaeDType: DType = {
-            switch ProcessInfo.processInfo.environment["SPIKE_VAE_DTYPE"] {
-            case "fp32": return .float32
-            case "bf16": return .bfloat16
-            default: return .float16
-            }
-        }()
+        let vaeDType: DType = .float16
         self.autoencoder =
             try autoencoder
             ?? loadAutoEncoder(hub: hub, configuration: configuration, dType: vaeDType)

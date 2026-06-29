@@ -1,4 +1,5 @@
-// Copyright © 2024 Apple Inc.
+// Alis Studio Mobile — main UI and generation flow.
+// Builds on Apple's mlx-swift-examples StableDiffusion library (MIT, vendored under Sources/).
 
 import MLX
 import StableDiffusion
@@ -112,22 +113,6 @@ struct ContentView: View {
                 pickingModel = false
             }
         }
-        .task {
-            guard ProcessInfo.processInfo.environment["SPIKE_AUTORUN"] == "1" else { return }
-            let prompts = [
-                "a photograph of an astronaut riding a horse on mars, cinematic lighting",
-                "a cozy bookstore cafe interior, warm light, detailed, photorealistic",
-                "a red fox in a snowy forest at dawn, sharp focus, natural colors",
-            ]
-            for (i, p) in prompts.enumerated() {
-                print("[spike] AUTORUN prompt[\(i)]: \(p)")
-                await evaluator.generate(prompt: p, negativePrompt: "", showProgress: false)
-                if let img = evaluator.image {
-                    SpikeMetrics.savePNG(img, to: URL.documentsDirectory.appending(path: "spike_\(i).png"))
-                }
-            }
-            print("[spike] AUTORUN COMPLETE")
-        }
     }
 
     private var topBar: some View {
@@ -183,6 +168,11 @@ struct ContentView: View {
                         VStack(spacing: 5) {
                             Text(progress.title).font(.system(size: 11)).foregroundStyle(AlisColor.text2(scheme))
                             ProgressView(value: progress.current, total: progress.limit)
+                            if progress.title == "Download" {
+                                Text("First run downloads several GB — keep the screen on.")
+                                    .font(.system(size: 10)).foregroundStyle(AlisColor.muted(scheme))
+                                    .multilineTextAlignment(.center)
+                            }
                         }
                         .padding(10)
                         .background(AlisColor.surface(scheme).opacity(0.85))
@@ -434,7 +424,7 @@ enum AlisGallery {
 
     static func save(_ img: CGImage, prompt: String, model: String, steps: Int) {
         let id = UUID().uuidString
-        SpikeMetrics.savePNG(img, to: dir.appending(path: "\(id).png"))
+        ImageSaver.savePNG(img, to: dir.appending(path: "\(id).png"))
         let meta = ["prompt": prompt, "model": model, "steps": String(steps)]
         if let data = try? JSONSerialization.data(withJSONObject: meta) {
             try? data.write(to: dir.appending(path: "\(id).json"))
@@ -525,13 +515,8 @@ actor ModelFactory {
     private var memoryConfigured = false
 
     init(preset: StableDiffusionConfiguration.Preset? = nil) {
-        let cfg: StableDiffusionConfiguration = {
-            if let preset { return preset.configuration }
-            switch ProcessInfo.processInfo.environment["SPIKE_MODEL"] {
-            case "sd-turbo": return .presetSDTurbo
-            default: return .presetSDXLTurbo  // default: best 8GB-stable quality config
-            }
-        }()
+        // Default to SDXL-Turbo (best 8GB-stable quality); the picker passes a preset to switch.
+        let cfg = (preset ?? .sdxlTurbo).configuration
         self.configuration = cfg
         let defaultParameters = cfg.defaultParameters()
         self.canShowProgress = defaultParameters.steps > 4
@@ -548,8 +533,7 @@ actor ModelFactory {
             print("conserving memory")
             loadConfiguration.quantize = true
             Memory.cacheLimit = 1 * 1024 * 1024
-            let memMB = ProcessInfo.processInfo.environment["SPIKE_MEM_MB"].flatMap { Int($0) } ?? 4096
-            Memory.memoryLimit = memMB * 1024 * 1024
+            Memory.memoryLimit = 4096 * 1024 * 1024
         } else {
             Memory.cacheLimit = 256 * 1024 * 1024
         }
@@ -572,15 +556,9 @@ actor ModelFactory {
                                     limit: 100))
                         }
                     }
-                    // Also fetch the drop-in fp16-stable VAE: default for SDXL (the loader uses it
-                    // automatically), or whatever SPIKE_VAE_REPO overrides it to.
-                    let defaultVAE =
-                        configuration.id.localizedCaseInsensitiveContains("sdxl")
-                        ? "madebyollin/sdxl-vae-fp16-fix" : ""
-                    let vaeRepo =
-                        ProcessInfo.processInfo.environment["SPIKE_VAE_REPO"] ?? defaultVAE
-                    if !vaeRepo.isEmpty {
-                        try await downloadVAERepo(vaeRepo)
+                    // SDXL also needs the drop-in fp16-stable VAE (the loader uses it automatically).
+                    if configuration.id.localizedCaseInsensitiveContains("sdxl") {
+                        try await downloadVAERepo("madebyollin/sdxl-vae-fp16-fix")
                     }
                 } catch {
                     let nserror = error as NSError
@@ -640,7 +618,7 @@ class StableDiffusionEvaluator {
     var progress: Progress?
     var message: String?
     var image: CGImage?
-    var steps: Int = ProcessInfo.processInfo.environment["SPIKE_STEPS"].flatMap { Int($0) } ?? 4
+    var steps: Int = 4
 
     private(set) var modelFactory: ModelFactory
     var modelKey: String { modelFactory.modelKey }
@@ -698,31 +676,10 @@ class StableDiffusionEvaluator {
         progress = .init(title: "Preparing", current: 0, limit: 1)
         message = nil
 
-        // The parameters that control the generation of the image. See
-        // EvaluateParameters for more information. For example, adjusting
-        // the latentSize parameter will change the size of the generated
-        // image. `imageCount` could be used to generate a gallery of
-        // images at the same time.
-        let parameters = {
-            var p = modelFactory.configuration.defaultParameters()
-            p.prompt = prompt
-            p.negativePrompt = negativePrompt
-
-            p.steps = self.steps
-
-            return p
-        }()
-
         do {
-            // Note: The optionals are used to discard parts of the model
-            // as it runs. This is used to conserve memory in devices
-            // with less memory.
-            // --- on-device spike: cold-load timing + peak-footprint sampler ---
-            SpikeMetrics.startPeakSampler()
-            let tLoad0 = SpikeMetrics.now()
+            // The optionals are used to discard parts of the model as it runs, to conserve
+            // memory on devices with less RAM.
             let container = try await modelFactory.load(reportProgress: updateProgress)
-            SpikeMetrics.log(String(format: "COLD-LOAD %.2fs", SpikeMetrics.now() - tLoad0))
-            let tGen0 = SpikeMetrics.now()
 
             // Capture MainActor state into locals so the @Sendable stages can use them.
             let cfg = modelFactory.configuration
@@ -767,10 +724,7 @@ class StableDiffusionEvaluator {
                 return Image(raster).asCGImage()
             }
 
-            // --- on-device spike: generation timing + peak report ---
-            SpikeMetrics.log(String(format: "GEN %.2fs", SpikeMetrics.now() - tGen0))
-            SpikeMetrics.stopPeakSampler()
-            // Release MLX buffers between generations so peak doesn't accumulate toward jetsam.
+            // Release MLX buffers between generations so the peak doesn't accumulate toward jetsam.
             Memory.clearCache()
 
             // Show + persist the exact final image (returned from the pipeline, not read back).
@@ -780,50 +734,17 @@ class StableDiffusionEvaluator {
             }
 
         } catch {
-            SpikeMetrics.stopPeakSampler()
             progress = nil
             message = "Failed: \(error)"
         }
     }
 }
 
-// MARK: - On-device measurement spike helper
-import os
+// MARK: - PNG saver
 import ImageIO
 import UniformTypeIdentifiers
 
-enum SpikeMetrics {
-    nonisolated(unsafe) static var peakFootprint: UInt64 = 0
-    nonisolated(unsafe) static var sampling = false
-
-    static func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
-
-    /// True per-process resident footprint — what jetsam watches.
-    static func physFootprint() -> UInt64 {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(
-            MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
-        let kr = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        return kr == KERN_SUCCESS ? UInt64(info.phys_footprint) : 0
-    }
-
-    /// Headroom remaining before this app is jetsam-killed (iOS only).
-    static func available() -> UInt64 {
-        #if os(iOS)
-            return UInt64(os_proc_available_memory())
-        #else
-            return 0
-        #endif
-    }
-
-    static func gib(_ b: UInt64) -> String {
-        String(format: "%.3f GiB", Double(b) / 1_073_741_824)
-    }
-
+enum ImageSaver {
     static func savePNG(_ cg: CGImage, to url: URL) {
         guard
             let dest = CGImageDestinationCreateWithURL(
@@ -831,30 +752,5 @@ enum SpikeMetrics {
         else { return }
         CGImageDestinationAddImage(dest, cg, nil)
         CGImageDestinationFinalize(dest)
-    }
-
-    static func log(_ tag: String) {
-        print(
-            "[spike] \(tag)  phys_footprint=\(gib(physFootprint()))  avail=\(gib(available()))  mlx_peak=\(gib(UInt64(max(0, Memory.peakMemory))))"
-        )
-    }
-
-    static func startPeakSampler() {
-        peakFootprint = 0
-        sampling = true
-        Task.detached {
-            while sampling {
-                let f = physFootprint()
-                if f > peakFootprint { peakFootprint = f }
-                try? await Task.sleep(nanoseconds: 30_000_000)  // 30ms
-            }
-        }
-    }
-
-    static func stopPeakSampler() {
-        sampling = false
-        print(
-            "[spike] PEAK phys_footprint=\(gib(peakFootprint))  mlx_peak=\(gib(UInt64(max(0, Memory.peakMemory))))  avail_now=\(gib(available()))"
-        )
     }
 }

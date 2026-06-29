@@ -171,7 +171,7 @@ public struct StableDiffusionConfiguration: Sendable {
                 hub: hub, configuration: sdConfiguration, dType: loadConfiguration.dType)
             if loadConfiguration.quantize {
                 quantize(model: sd.textEncoder, filter: { k, m in m is Linear })
-                quantize(model: sd.unet, groupSize: 32, bits: Int(ProcessInfo.processInfo.environment["SPIKE_UNET_BITS"] ?? "4") ?? 4)
+                quantize(model: sd.unet, groupSize: 32, bits: 4)
             }
             return sd
         }
@@ -202,7 +202,7 @@ public struct StableDiffusionConfiguration: Sendable {
             if loadConfiguration.quantize {
                 quantize(model: sd.textEncoder, filter: { k, m in m is Linear })
                 quantize(model: sd.textEncoder2, filter: { k, m in m is Linear })
-                quantize(model: sd.unet, groupSize: 32, bits: Int(ProcessInfo.processInfo.environment["SPIKE_UNET_BITS"] ?? "4") ?? 4)
+                quantize(model: sd.unet, groupSize: 32, bits: 4)
             }
             return sd
         }
@@ -228,7 +228,7 @@ public struct StableDiffusionConfiguration: Sendable {
                 hub: hub, configuration: sdConfiguration, dType: loadConfiguration.dType)
             if loadConfiguration.quantize {
                 quantize(model: sd.textEncoder, filter: { k, m in m is Linear })
-                quantize(model: sd.unet, groupSize: 32, bits: Int(ProcessInfo.processInfo.environment["SPIKE_UNET_BITS"] ?? "4") ?? 4)
+                quantize(model: sd.unet, groupSize: 32, bits: 4)
             }
             return sd
         }
@@ -457,12 +457,11 @@ public func downloadVAERepo(_ repoId: String, hub: HubApi = HubApi()) async thro
 func loadAutoEncoder(hub: HubApi, configuration: StableDiffusionConfiguration, dType: DType) throws
     -> Autoencoder
 {
-    // Drop-in fp16-stable VAE (madebyollin/sdxl-vae-fp16-fix), forced to float16 — halves the
-    // SDXL decode activation without NaNs. Default it for SDXL; override/disable via SPIKE_VAE_REPO.
-    let defaultVAERepo =
+    // SDXL: load the drop-in fp16-stable VAE (madebyollin/sdxl-vae-fp16-fix) in float16 — halves
+    // the 512² decode activation peak without the NaNs the stock SDXL VAE produces in fp16.
+    let vaeRepo =
         configuration.id.localizedCaseInsensitiveContains("sdxl") ? "madebyollin/sdxl-vae-fp16-fix" : ""
-    let vaeRepoEnv = ProcessInfo.processInfo.environment["SPIKE_VAE_REPO"]
-    if let vaeRepo = (vaeRepoEnv ?? defaultVAERepo).isEmpty ? nil : (vaeRepoEnv ?? defaultVAERepo) {
+    if !vaeRepo.isEmpty {
         let dir = hub.localRepoLocation(Hub.Repo(id: vaeRepo))
         let cfg = try JSONDecoder().decode(
             AutoencoderConfiguration.self,
