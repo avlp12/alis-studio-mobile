@@ -87,6 +87,11 @@ struct ContentView: View {
 
     private var busy: Bool { evaluator.progress != nil }
 
+    // Independent of desktop Alis Studio; reads CFBundleShortVersionString (= MARKETING_VERSION).
+    private var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.0"
+    }
+
     var body: some View {
         ZStack {
             AlisColor.bg(scheme).ignoresSafeArea()
@@ -132,7 +137,7 @@ struct ContentView: View {
                 .font(.system(size: 15, weight: .medium)).foregroundStyle(AlisColor.text(scheme))
                 .lineLimit(1).minimumScaleFactor(0.8).layoutPriority(1)
             if !showGallery {
-                Text("v0.6")
+                Text("v" + appVersion)
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(AlisColor.muted(scheme))
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(AlisColor.surface1(scheme))
@@ -723,7 +728,7 @@ class StableDiffusionEvaluator {
             let cfg = modelFactory.configuration
             let stepCount = self.steps
 
-            try await container.performTwoStage { generator in
+            let finalImage = try await container.performTwoStage { generator in
                 var parameters = cfg.defaultParameters()
                 parameters.prompt = prompt
                 parameters.negativePrompt = negativePrompt
@@ -737,7 +742,7 @@ class StableDiffusionEvaluator {
                 // the model and just evaluate the decode portion.
                 return (generator.detachedDecoder(), latents)
 
-            } second: { decoder, latents in
+            } second: { decoder, latents -> CGImage? in
                 var lastXt: MLXArray?
                 for (i, xt) in latents!.enumerated() {
                     if Task.isCancelled { break }
@@ -752,13 +757,14 @@ class StableDiffusionEvaluator {
                     updateProgress(
                         progress: .init(
                             title: "Generating", current: Double(i + 1),
-                            limit: Double(parameters.steps)))
-                }
-
-                if !Task.isCancelled, let lastXt {
-                    display(decoded: decoder(lastXt))
+                            limit: Double(stepCount)))
                 }
                 updateProgress(progress: nil)
+
+                // Decode the final latent and return the exact CGImage (no observable-state race).
+                guard !Task.isCancelled, let lastXt else { return nil }
+                let raster = (decoder(lastXt) * 255).asType(.uint8).squeezed()
+                return Image(raster).asCGImage()
             }
 
             // --- on-device spike: generation timing + peak report ---
@@ -767,12 +773,10 @@ class StableDiffusionEvaluator {
             // Release MLX buffers between generations so peak doesn't accumulate toward jetsam.
             Memory.clearCache()
 
-            // Persist to the gallery (let the queued image update apply first).
-            if !Task.isCancelled {
-                await Task.yield()
-                if let img = image {
-                    AlisGallery.save(img, prompt: prompt, model: modelKey, steps: steps)
-                }
+            // Show + persist the exact final image (returned from the pipeline, not read back).
+            if let finalImage {
+                image = finalImage
+                AlisGallery.save(finalImage, prompt: prompt, model: modelKey, steps: steps)
             }
 
         } catch {

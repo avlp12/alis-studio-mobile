@@ -33,7 +33,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gesicht.alisstudiomobile.StableDiffusion
-        SWIFT_VERSION: "5.10"
+        SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: YES
 
   AlisStudioMobile:
@@ -50,7 +50,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.gesicht.alisstudiomobile
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
-        SWIFT_VERSION: "5.10"
+        SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_ENTITLEMENTS: Sources/AlisStudioMobile/AlisStudioMobile.entitlements

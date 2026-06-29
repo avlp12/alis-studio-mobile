@@ -227,14 +227,16 @@ open class StableDiffusion {
         self.textEncoder =
             try textEncoder ?? loadTextEncoder(hub: hub, configuration: configuration, dType: dType)
 
-        // note: autoencoder normally uses float32 weights. Spike: SPIKE_VAE_DTYPE={fp16,bf16}
-        // halves the 512² decode activation peak. fp16 NaNs the SDXL VAE (known overflow);
-        // bf16 keeps fp32's exponent range so it should be stable + still 2 bytes.
+        // VAE dtype. Default fp16 to halve the 512² decode activation peak — the SD/SD-Turbo
+        // (SD-2.1) VAE is fp16-stable, so this is the validated SD-Turbo config (~3.4 GiB).
+        // SDXL's VAE NaNs in fp16, but SDXL takes the fp16-fix repo path in loadAutoEncoder
+        // (which forces fp16 on the retuned weights), so this dtype only applies to SD-Turbo's
+        // stock VAE. Overridable via SPIKE_VAE_DTYPE for measurement.
         let vaeDType: DType = {
             switch ProcessInfo.processInfo.environment["SPIKE_VAE_DTYPE"] {
-            case "fp16": return .float16
+            case "fp32": return .float32
             case "bf16": return .bfloat16
-            default: return .float32
+            default: return .float16
             }
         }()
         self.autoencoder =

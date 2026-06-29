@@ -3,6 +3,9 @@
 *.xcodeproj/project.xcworkspace/xcuserdata/
 .swiftpm/
 build/
+build_dev/
+build_sim/
+build_mac/
 DerivedData/
 *.xcuserstate
 
@@ -11,3 +14,6 @@ AlisStudioMobile.xcodeproj/
 
 # macOS
 .DS_Store
+
+# claude-mem auto-generated context
+AGENTS.md
