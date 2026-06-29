@@ -52,33 +52,68 @@ so SDXL loads the fp16-stable VAE (the stock SDXL VAE NaNs in fp16); the UNet is
 - Light + dark, matching Alis Studio
 - Runtime device check (blocks unsupported <8 GB hardware)
 
-## Build
+## Install on your iPhone
 
-Requires Xcode 16+, an iOS 17+ **device**, and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen).
+There's no App Store build — you install it yourself from source. A **free**
+Apple ID is enough (no paid Developer Program needed).
 
-```sh
-brew install xcodegen
-xcodegen generate          # creates AlisStudioMobile.xcodeproj from project.yml
-open AlisStudioMobile.xcodeproj
-```
+### You need
+- A **Mac** with **Xcode 16+** installed.
+- An **8 GB iPhone** (iPhone 15 Pro / 16 / 16 Pro or newer) on **iOS 17+**, and a **USB cable**.
+- An **Apple ID** (free) and a **Wi-Fi** connection (first launch downloads several GB).
 
-Set your signing Team in the target's Signing & Capabilities, then run on a
-physical device. (A free personal team works; the `increased-memory-limit`
-entitlement signs fine on it.)
+### Step by step (Xcode — recommended)
 
-CLI build + install (device id from `xcrun devicectl list devices`):
+1. **Get the project and generate the Xcode project.**
+   ```sh
+   git clone https://github.com/avlp12/alis-studio-mobile.git
+   cd alis-studio-mobile
+   brew install xcodegen      # one-time
+   xcodegen generate          # creates AlisStudioMobile.xcodeproj
+   open AlisStudioMobile.xcodeproj
+   ```
 
+2. **Sign in with your Apple ID** in Xcode → Settings (⌘,) → **Accounts** → **+** →
+   Apple ID. This creates a free "Personal Team."
+
+3. **Set the signing team.** Select the **AlisStudioMobile** target → **Signing &
+   Capabilities** → check **Automatically manage signing** → pick your Personal
+   Team. If you see "bundle identifier is not available," change
+   **Bundle Identifier** to something unique (e.g. `com.<yourname>.alisstudiomobile`).
+
+4. **Enable Developer Mode on the iPhone:** Settings → **Privacy & Security** →
+   **Developer Mode** → On → restart when prompted.
+
+5. **Plug the iPhone into the Mac** with USB and tap **Trust** on the phone if asked.
+   In Xcode's toolbar, select your iPhone as the run destination.
+
+6. **Build & run** (⌘R). The first build takes a few minutes (it compiles MLX).
+
+7. **Trust the developer certificate** (first run only): on the iPhone, Settings →
+   General → **VPN & Device Management** → tap your Apple ID under "Developer App"
+   → **Trust**. Launch the app again.
+
+8. **First launch downloads the model** (several GB from Hugging Face) — **keep the
+   screen on** until it finishes, or iOS will suspend and kill the download. After
+   that, the model is cached and launches are fast.
+
+### Command line (advanced)
+Find your device id with `xcrun devicectl list devices` and your team id in
+Xcode → Settings → Accounts.
 ```sh
 xcodegen generate
 xcodebuild -project AlisStudioMobile.xcodeproj -scheme AlisStudioMobile \
   -configuration Release -destination 'platform=iOS,id=<DEVICE_ID>' \
   -allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=<TEAM_ID> build
 xcrun devicectl device install app --device <DEVICE_ID> \
-  <DerivedData>/Build/Products/Release-iphoneos/AlisStudioMobile.app
+  ~/Library/Developer/Xcode/DerivedData/AlisStudioMobile-*/Build/Products/Release-iphoneos/AlisStudioMobile.app
 ```
 
-On first launch, keep the screen on while the model downloads.
+### Free-team limitations (good to know)
+- Apps signed with a **free** personal team **expire after 7 days** — re-run from
+  Xcode (or rebuild + reinstall) to renew. A paid Developer account removes this.
+- A free team is limited to **3 sideloaded apps** at a time.
+- Reinstalling/renewing needs the **Mac** — the app can't update itself over the air.
 
 ## License
 
